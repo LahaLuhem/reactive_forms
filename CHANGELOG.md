@@ -1,3 +1,14 @@
+# 18.2.2
+
+## Fixes
+
+- Correct `hasErrors` to check child controls.
+
+## Enhances
+
+- Improve `errors` getter performance.
+- Optimize list and map access.
+
 # 18.2.1
 
 ## Enhances
