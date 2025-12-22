@@ -241,7 +241,8 @@ abstract class AbstractControl<T> {
   bool get enabled => !disabled;
 
   /// True whether the control has validation errors.
-  bool get hasErrors => errors.isNotEmpty;
+  bool get hasErrors =>
+      _errors.isNotEmpty || anyControls((control) => control.hasErrors);
 
   /// The validation status of the control.
   ///
