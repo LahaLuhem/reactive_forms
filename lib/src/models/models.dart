@@ -108,8 +108,7 @@ abstract class AbstractControl<T> {
   ///
   /// In [FormGroup] these come in handy when you want to perform validation
   /// that considers the value of more than one child control.
-  List<Validator<dynamic>> get validators =>
-      List<Validator<dynamic>>.unmodifiable(_validators);
+  List<Validator<dynamic>> get validators => UnmodifiableListView(_validators);
 
   /// Sets the synchronous [validators] that are active on this control. Calling
   /// this overwrites any existing sync validators.
@@ -161,7 +160,7 @@ abstract class AbstractControl<T> {
   /// In [FormGroup] these come in handy when you want to perform validation
   /// that considers the value of more than one child control.
   List<AsyncValidator<dynamic>> get asyncValidators =>
-      List<AsyncValidator<dynamic>>.unmodifiable(_asyncValidators);
+      UnmodifiableListView(_asyncValidators);
 
   /// Sets the async [validators] that are active on this control. Calling this
   /// overwrites any existing async validators.
@@ -652,7 +651,7 @@ abstract class AbstractControl<T> {
 
   void _runValidators() {
     _errors.clear();
-    for (final validator in validators) {
+    for (final validator in _validators) {
       final error = validator.validate(this);
       if (error != null) {
         _errors.addAll(error);
@@ -1462,7 +1461,7 @@ class FormGroup extends FormControlCollection<Map<String, Object?>> {
   }
 
   @override
-  Map<String, Object?> get value => Map.unmodifiable(_value!);
+  Map<String, Object?> get value => UnmodifiableMapView(_value!);
 
   /// Set the complete value for the form group.
   ///
@@ -1855,10 +1854,14 @@ class FormArray<T> extends FormControlCollection<List<T?>> {
   /// This method is for internal use only.
   @override
   List<T?>? reduceValue() {
-    return _controls
-        .where((control) => control.enabled || disabled)
-        .map((control) => control.value)
-        .toList();
+    final values = <T?>[];
+    for (final control in _controls) {
+      if (control.enabled || disabled) {
+        values.add(control.value);
+      }
+    }
+
+    return values;
   }
 
   /// Disables the control.
