@@ -760,6 +760,8 @@ abstract class AbstractControl<T> {
         }
       },
       onDone: () {
+        if (_statusChanges.isClosed) return;
+
         final allErrors = <String, dynamic>{};
         allErrors.addAll(errors);
         allErrors.addAll(asyncValidationErrors);
