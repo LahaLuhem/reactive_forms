@@ -315,5 +315,166 @@ void main() {
         );
       },
     );
+
+    // Regression tests for https://github.com/joanpablo/reactive_forms/issues/504
+    //
+    // When a control is disposed while an async validator is still in flight,
+    // the validator's `onDone` callback used to fire after `_statusChanges`
+    // was already closed, throwing
+    // `StateError: Cannot add new events after calling close`.
+    group('Dispose during in-flight async validation', () {
+      test('FormControl disposed mid-flight does not throw', () {
+        fakeAsync((async) {
+          var validatorRan = false;
+          final control = FormControl<String>(
+            asyncValidators: [
+              Validators.delegateAsync(
+                (control) =>
+                    Future.delayed(const Duration(milliseconds: 100), () {
+                      validatorRan = true;
+                      return null;
+                    }),
+              ),
+            ],
+          );
+
+          control.value = 'some value';
+          expect(control.pending, true);
+
+          // Dispose part-way through the debounce window so the timer
+          // outlives the subscription's cancellation.
+          async.elapse(const Duration(milliseconds: 100));
+          control.dispose();
+
+          // Advance past the global debounce (250ms) plus the validator's
+          // delay so the orphaned future resolves and the stream completes.
+          async.elapse(const Duration(milliseconds: 500));
+
+          expect(
+            validatorRan,
+            true,
+            reason: 'The async validator future should still resolve',
+          );
+        });
+      });
+
+      test(
+        'FormControl disposed mid-flight does not throw when validator returns errors',
+        () {
+          fakeAsync((async) {
+            final control = FormControl<String>(
+              asyncValidators: [
+                Validators.delegateAsync(
+                  (control) => Future.delayed(
+                    const Duration(milliseconds: 100),
+                    () => {'unique': true},
+                  ),
+                ),
+              ],
+            );
+
+            control.value = 'some value';
+            async.elapse(const Duration(milliseconds: 100));
+            control.dispose();
+
+            // Without the guard, onDone would call setErrors → _statusChanges.add
+            // on a closed controller and throw StateError.
+            async.elapse(const Duration(milliseconds: 500));
+          });
+        },
+      );
+
+      test('FormControl disposed during debounce window does not throw', () {
+        fakeAsync((async) {
+          final control = FormControl<String>(
+            asyncValidators: [
+              Validators.delegateAsync(
+                (control) =>
+                    Future.delayed(const Duration(milliseconds: 100), () => null),
+                debounceTime: 500,
+              ),
+            ],
+          );
+
+          control.value = 'some value';
+
+          // Dispose while still inside the debounce window — the timer is
+          // armed but the validator hasn't started yet.
+          async.elapse(const Duration(milliseconds: 100));
+          control.dispose();
+
+          // Advance well past debounce + validator delay.
+          async.elapse(const Duration(milliseconds: 1000));
+        });
+      });
+
+      test(
+        'FormGroup disposed while a child async validator is in flight does not throw',
+        () {
+          fakeAsync((async) {
+            final form = FormGroup({
+              'name': FormControl<String>(
+                asyncValidators: [
+                  Validators.delegateAsync(
+                    (control) => Future.delayed(
+                      const Duration(milliseconds: 100),
+                      () => {'taken': true},
+                    ),
+                  ),
+                ],
+              ),
+            });
+
+            form.control('name').value = 'some value';
+            expect(form.pending, true);
+
+            // Disposing the parent cascades dispose() to children.
+            async.elapse(const Duration(milliseconds: 100));
+            form.dispose();
+
+            async.elapse(const Duration(milliseconds: 500));
+          });
+        },
+      );
+
+      test(
+        'FormControl disposed with multiple in-flight async validators does not throw',
+        () {
+          fakeAsync((async) {
+            final control = FormControl<String>(
+              asyncValidators: [
+                Validators.delegateAsync(
+                  (control) => Future.delayed(
+                    const Duration(milliseconds: 100),
+                    () => null,
+                  ),
+                ),
+                Validators.delegateAsync(
+                  (control) => Future.delayed(
+                    const Duration(milliseconds: 200),
+                    () => {'other': true},
+                  ),
+                ),
+                Validators.debounced(
+                  Validators.delegateAsync(
+                    (control) => Future.delayed(
+                      const Duration(milliseconds: 150),
+                      () => null,
+                    ),
+                  ),
+                  300,
+                ),
+              ],
+            );
+
+            control.value = 'some value';
+            async.elapse(const Duration(milliseconds: 100));
+            control.dispose();
+
+            async.elapse(const Duration(milliseconds: 1000));
+          });
+        },
+      );
+    });
   });
 }
